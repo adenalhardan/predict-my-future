@@ -5,16 +5,14 @@ import subprocess
 import time
 import tempfile
 from pathlib import Path
-import httpx
 from google.genai import types
 from PIL import Image
 from models.schemas import ScenarioPrompt
-from services.client import get_client
+from services.client import get_veo_client
 from services.storage import is_gcs_enabled, upload_bytes_to_gcs
 
 
-VEO_MODEL = "veo-3.1-generate-preview"
-BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
+VEO_MODEL = os.getenv("VEO_MODEL", "veo-3.1-generate-001")
 
 OUTPUT_DIR = Path(__file__).resolve().parent.parent / "test_videos" / "generated"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -124,33 +122,16 @@ def concat_with_original_tail(
             os.unlink(concat_list_path)
 
 
-def poll_operation(operation_name: str, api_key: str) -> dict:
-    """Poll a long-running operation via REST API with API key auth."""
-    url = f"{BASE_URL}/{operation_name}"
-    print(f"[Veo] Polling operation: {url}")
-
-    while True:
-        resp = httpx.get(url, params={"key": api_key}, timeout=30)
-        resp.raise_for_status()
-        data = resp.json()
-        print(f"[Veo] Poll status: done={data.get('done', False)}")
-
-        if data.get("done"):
-            return data
-
-        time.sleep(10)
-
-
 def generate_video_sync(
     scenario: ScenarioPrompt,
     reference_image: types.Image,
     original_video_bytes: bytes,
     job_id: str,
 ) -> "str | None":
-    """Generate a single scenario video with Veo 3.1 (sync, for use in thread)."""
-    client = get_client()
-    api_key = os.getenv("GOOGLE_API_KEY")
+    """Generate a single scenario video with Veo via Vertex AI SDK."""
+    client = get_veo_client()
 
+    print(f"[Veo] Starting generation for '{scenario.type}' with model {VEO_MODEL}")
     operation = client.models.generate_videos(
         model=VEO_MODEL,
         prompt=scenario.visual_description,
@@ -163,34 +144,27 @@ def generate_video_sync(
         ),
     )
 
-    result = poll_operation(operation.name, api_key)
+    print(f"[Veo] Operation started: {operation.name}")
+    while not operation.done:
+        time.sleep(10)
+        operation = client.operations.get(operation)
+        print(f"[Veo] Polling '{scenario.type}'... done={operation.done}")
 
-    gen_response = result.get("response", {})
-    veo_response = gen_response.get("generateVideoResponse", gen_response)
-
-    rai_count = veo_response.get("raiMediaFilteredCount", 0)
-    if rai_count:
-        reasons = veo_response.get("raiMediaFilteredReasons", [])
-        print(f"[Veo] Safety filter blocked video for '{scenario.type}': {reasons}")
+    result = operation.result
+    if not result or not result.generated_videos:
+        rai_count = getattr(result, "rai_media_filtered_count", 0)
+        reasons = getattr(result, "rai_media_filtered_reasons", [])
+        if rai_count:
+            print(f"[Veo] Safety filter blocked {rai_count} video(s) for '{scenario.type}': {reasons}")
+        else:
+            print(f"[Veo] No videos returned for '{scenario.type}'")
         return None
-
-    generated_samples = veo_response.get("generatedSamples", veo_response.get("generatedVideos", []))
-    if not generated_samples:
-        print(f"[Veo] No videos returned for '{scenario.type}': {result}")
-        return None
-
-    video_uri = generated_samples[0]["video"]["uri"]
-    separator = "&" if "?" in video_uri else "?"
-    download_url = f"{video_uri}{separator}key={api_key}"
-    print(f"[Veo] Downloading video from: {video_uri}")
-    video_resp = httpx.get(download_url, timeout=120, follow_redirects=True)
-    video_resp.raise_for_status()
 
     job_dir = OUTPUT_DIR / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
 
     raw_path = job_dir / f"{scenario.type}_raw.mp4"
-    raw_path.write_bytes(video_resp.content)
+    result.generated_videos[0].video.save(str(raw_path))
     print(f"[Veo] Saved raw Veo video to: {raw_path}")
 
     final_path = str(job_dir / f"{scenario.type}.mp4")

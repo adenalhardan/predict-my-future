@@ -37,6 +37,8 @@ spec:
                 secretKeyRef:
                   name: gcs
                   key: private-key
+            - name: VEO_MODEL
+              value: "veo-3.1-generate-001"
             - name: MAX_VIDEOS
               value: "4"
             - name: GOOGLE_CLOUD_PROJECT
