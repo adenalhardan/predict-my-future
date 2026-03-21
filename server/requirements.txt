@@ -1,7 +1,9 @@
 fastapi
 uvicorn[standard]
 google-genai
+google-cloud-storage
 python-multipart
 python-dotenv
 pydantic
 Pillow
+opencv-python-headless

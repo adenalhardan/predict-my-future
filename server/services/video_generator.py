@@ -9,6 +9,7 @@ from google.genai import types
 from PIL import Image
 from models.schemas import ScenarioPrompt
 from services.client import get_client
+from services.storage import is_gcs_enabled, upload_bytes_to_gcs
 
 
 VEO_MODEL = "veo-3.1-generate-preview"
@@ -75,7 +76,7 @@ def generate_video_sync(
     scenario: ScenarioPrompt,
     reference_image: types.Image,
     job_id: str,
-) -> str:
+) -> "str | None":
     """Generate a single scenario video with Veo 3.1 (sync, for use in thread)."""
     client = get_client()
     api_key = os.getenv("GOOGLE_API_KEY")
@@ -115,8 +116,13 @@ def generate_video_sync(
     print(f"[Veo] Downloading video from: {video_uri}")
     video_resp = httpx.get(download_url, timeout=120, follow_redirects=True)
     video_resp.raise_for_status()
+
     video_path.write_bytes(video_resp.content)
     print(f"[Veo] Saved video to: {video_path}")
+
+    if is_gcs_enabled():
+        gcs_blob = f"outputs/{job_id}_{scenario.type}.mp4"
+        upload_bytes_to_gcs(gcs_blob, video_resp.content)
 
     return str(video_path)
 
@@ -145,8 +151,9 @@ async def generate_all_videos(
     pil_frame = extract_last_frame(video_bytes)
     reference_image = pil_to_genai_image(pil_frame)
 
+    max_videos = int(os.getenv("MAX_VIDEOS", "4"))
     results = []
-    for scenario in scenarios:
+    for scenario in scenarios[:max_videos]:
         try:
             path = await generate_video(scenario, reference_image, job_id)
         except Exception as e:

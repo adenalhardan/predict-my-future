@@ -1,6 +1,7 @@
 import uuid
 import asyncio
 from fastapi import APIRouter, UploadFile, File, BackgroundTasks, HTTPException
+from pydantic import BaseModel
 from models.schemas import (
     PredictionResponse,
     Scenario,
@@ -9,6 +10,11 @@ from models.schemas import (
 from services.scene_analyzer import analyze_scene
 from services.prompt_generator import generate_prompts
 from services.video_generator import generate_all_videos
+from services.storage import (
+    is_gcs_enabled,
+    download_bytes_from_gcs,
+    generate_download_signed_url,
+)
 
 router = APIRouter(prefix="/api")
 
@@ -29,15 +35,25 @@ async def _run_prediction(job_id: str, video_bytes: bytes, mime_type: str):
             prompts.scenarios, video_bytes, job_id
         )
 
-        scenarios = [
-            Scenario(
-                type=prompt.type,
-                title=prompt.title,
-                description=prompt.description,
-                video_url=f"/api/videos/{job_id}_{prompt.type}.mp4" if path else "",
+        scenarios = []
+        for prompt, path in results:
+            if not path:
+                video_url = ""
+            elif is_gcs_enabled():
+                video_url = generate_download_signed_url(
+                    f"outputs/{job_id}_{prompt.type}.mp4"
+                )
+            else:
+                video_url = f"/api/videos/{job_id}_{prompt.type}.mp4"
+
+            scenarios.append(
+                Scenario(
+                    type=prompt.type,
+                    title=prompt.title,
+                    description=prompt.description,
+                    video_url=video_url,
+                )
             )
-            for prompt, path in results
-        ]
 
         jobs[job_id] = JobStatus(
             status="completed",
@@ -83,6 +99,40 @@ def _resolve_mime_type(upload: UploadFile) -> str:
     if name.endswith(".webm"):
         return "video/webm"
     return "video/mp4"
+
+
+class StartRequest(BaseModel):
+    job_id: str
+
+
+@router.post("/predict/start")
+async def predict_start(
+    body: StartRequest,
+    background_tasks: BackgroundTasks,
+):
+    """Start the prediction pipeline for a video already uploaded to GCS.
+
+    The client must first call GET /api/get-presigned-url, upload the video
+    using the returned upload_url, then call this endpoint with the job_id.
+    """
+    if not is_gcs_enabled():
+        raise HTTPException(status_code=503, detail="GCS not configured")
+
+    job_id = body.job_id
+    blob_path = f"inputs/{job_id}/video.mp4"
+
+    try:
+        video_bytes = download_bytes_from_gcs(blob_path)
+    except Exception as e:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Video not found in GCS. Did you upload it? ({e})",
+        )
+
+    jobs[job_id] = JobStatus(status="pending")
+    background_tasks.add_task(_run_prediction, job_id, video_bytes, "video/mp4")
+
+    return {"job_id": job_id}
 
 
 @router.post("/test/analyze")
