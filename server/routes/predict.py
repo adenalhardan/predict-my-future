@@ -1,19 +1,19 @@
-import asyncio
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
+
 from models.schemas import (
+    JobStatus,
     PredictionResponse,
     Scenario,
-    JobStatus,
 )
-from services.scene_analyzer import analyze_scene
 from services.prompt_generator import generate_prompts
-from services.video_generator import generate_all_videos
+from services.scene_analyzer import analyze_scene
 from services.storage import (
-    is_gcs_enabled,
     download_bytes_from_gcs,
-    generate_download_signed_url,
+    is_gcs_enabled,
+    resolve_cdn_url,
 )
+from services.video_generator import generate_all_videos
 
 router = APIRouter(prefix="/api")
 
@@ -30,18 +30,14 @@ async def _run_prediction(job_id: str, video_bytes: bytes, mime_type: str):
 
         prompts = await generate_prompts(scene)
 
-        results = await generate_all_videos(
-            prompts.scenarios, video_bytes, job_id
-        )
+        results = await generate_all_videos(prompts.scenarios, video_bytes, job_id)
 
         scenarios = []
         for prompt, path in results:
             if not path:
                 video_url = ""
             elif is_gcs_enabled():
-                video_url = generate_download_signed_url(
-                    f"outputs/{job_id}/{prompt.type}.mp4"
-                )
+                video_url = resolve_cdn_url(f"outputs/{job_id}/{prompt.type}.mp4")
             else:
                 video_url = f"/api/videos/{job_id}/{prompt.type}.mp4"
 
