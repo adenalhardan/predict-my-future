@@ -24,7 +24,6 @@ class ScenarioPrompts(BaseModel):
 
 class Scenario(BaseModel):
     type: Literal["positive", "bad", "insane", "funny"]
-    title: str
     description: str
     video_url: str
 

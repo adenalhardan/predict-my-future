@@ -44,7 +44,6 @@ async def _run_prediction(job_id: str, video_bytes: bytes, mime_type: str):
             scenarios.append(
                 Scenario(
                     type=prompt.type,
-                    title=prompt.title,
                     description=prompt.description,
                     video_url=video_url,
                 )
