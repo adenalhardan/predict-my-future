@@ -4,6 +4,7 @@ import os
 from datetime import timedelta
 
 from google.cloud import storage
+from google.oauth2 import service_account
 
 _storage_client = None
 GCS_PREFIX = "predict-future"
@@ -20,7 +21,22 @@ def _prefixed(blob_path: str) -> str:
 def _get_storage_client() -> storage.Client:
     global _storage_client
     if _storage_client is None:
-        _storage_client = storage.Client(project=os.getenv("GOOGLE_CLOUD_PROJECT"))
+        PROJECT_ID = os.environ["GCS_PROJECT_ID"]
+        CLIENT_EMAIL = os.environ["GCS_CLIENT_EMAIL"]
+        PRIVATE_KEY = os.environ["GCS_PRIVATE_KEY"].replace("\\n", "\n")
+
+        info = {
+            "type": "service_account",
+            "project_id": PROJECT_ID,
+            "private_key": PRIVATE_KEY,
+            "client_email": CLIENT_EMAIL,
+            "token_uri": "https://oauth2.googleapis.com/token",
+        }
+
+        credentials = service_account.Credentials.from_service_account_info(info)
+        _storage_client = storage.Client(
+            project=os.getenv("GOOGLE_CLOUD_PROJECT"), credentials=credentials
+        )
     return _storage_client
 
 
