@@ -30,6 +30,12 @@ An iPhone app where a user records a short video of a real-life situation, and t
 
 ---
 
+## Endpoints 
+
+* GET /api/get-presigned-url : returns a presigned URL for the Azure storage bucket
+* GET /api/predict?job_id={job_id} : start predict job, the job_id is used to resolve the path of the image
+* GET /api/poll?job_id={job_id} : poll job status, either returns {status: pending} or all of the completed job data
+
 ## Project Structure
 
 ```
