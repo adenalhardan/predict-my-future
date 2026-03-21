@@ -4,4 +4,5 @@ __pycache__/
 *.pyc
 venv/
 xcuserdata/
-
+*.pyc
+.env

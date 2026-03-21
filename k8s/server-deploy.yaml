@@ -19,3 +19,19 @@ spec:
         - name: server
           image: predictmyfuture.azurecr.io/server:latest
           imagePullPolicy: Always
+          env:
+            - name: GCS_CLIENT_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: gcs
+                  key: client-email
+            - name: GCS_PROJECT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: gcs
+                  key: project-id
+            - name: GCS_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: gcs
+                  key: private-key
