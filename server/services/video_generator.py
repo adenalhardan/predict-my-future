@@ -1,6 +1,7 @@
 import os
 import io
 import asyncio
+import subprocess
 import time
 import tempfile
 from pathlib import Path
@@ -55,6 +56,74 @@ def pil_to_genai_image(pil_image: Image.Image) -> types.Image:
     return types.Image(image_bytes=image_bytes, mime_type="image/png")
 
 
+TAIL_SECONDS = 5
+
+
+def concat_with_original_tail(
+    original_video_bytes: bytes,
+    generated_video_path: str,
+    output_path: str,
+) -> str:
+    """Prepend the last TAIL_SECONDS of the original video to the generated video."""
+    with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
+        f.write(original_video_bytes)
+        original_tmp = f.name
+
+    tail_tmp = tempfile.mktemp(suffix=".mp4")
+    scaled_tmp = tempfile.mktemp(suffix=".mp4")
+
+    try:
+        # 1. Extract last N seconds of original, re-encode to consistent format
+        subprocess.run(
+            [
+                "ffmpeg", "-y", "-sseof", f"-{TAIL_SECONDS}",
+                "-i", original_tmp,
+                "-vf", "scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:-1:-1",
+                "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+                "-r", "24", "-an", tail_tmp,
+            ],
+            capture_output=True, check=True,
+        )
+        print(f"[ffmpeg] Extracted last {TAIL_SECONDS}s of original")
+
+        # 2. Re-encode generated video to match resolution/framerate
+        subprocess.run(
+            [
+                "ffmpeg", "-y", "-i", generated_video_path,
+                "-vf", "scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:-1:-1",
+                "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+                "-r", "24", "-an", scaled_tmp,
+            ],
+            capture_output=True, check=True,
+        )
+        print("[ffmpeg] Re-encoded generated video")
+
+        # 3. Concatenate using concat demuxer
+        concat_list = tempfile.mktemp(suffix=".txt")
+        with open(concat_list, "w") as cl:
+            cl.write(f"file '{tail_tmp}'\nfile '{scaled_tmp}'\n")
+
+        subprocess.run(
+            [
+                "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+                "-i", concat_list,
+                "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+                output_path,
+            ],
+            capture_output=True, check=True,
+        )
+        print(f"[ffmpeg] Concatenated -> {output_path}")
+
+        return output_path
+    finally:
+        for p in [original_tmp, tail_tmp, scaled_tmp]:
+            if os.path.exists(p):
+                os.unlink(p)
+        concat_list_path = concat_list if 'concat_list' in dir() else None
+        if concat_list_path and os.path.exists(concat_list_path):
+            os.unlink(concat_list_path)
+
+
 def poll_operation(operation_name: str, api_key: str) -> dict:
     """Poll a long-running operation via REST API with API key auth."""
     url = f"{BASE_URL}/{operation_name}"
@@ -75,6 +144,7 @@ def poll_operation(operation_name: str, api_key: str) -> dict:
 def generate_video_sync(
     scenario: ScenarioPrompt,
     reference_image: types.Image,
+    original_video_bytes: bytes,
     job_id: str,
 ) -> "str | None":
     """Generate a single scenario video with Veo 3.1 (sync, for use in thread)."""
@@ -88,13 +158,12 @@ def generate_video_sync(
         config=types.GenerateVideosConfig(
             aspect_ratio="9:16",
             number_of_videos=1,
-            duration_seconds=6,
+            duration_seconds=8,
+            person_generation="allow_adult",
         ),
     )
 
     result = poll_operation(operation.name, api_key)
-
-    video_path = OUTPUT_DIR / f"{job_id}_{scenario.type}.mp4"
 
     gen_response = result.get("response", {})
     veo_response = gen_response.get("generateVideoResponse", gen_response)
@@ -117,25 +186,33 @@ def generate_video_sync(
     video_resp = httpx.get(download_url, timeout=120, follow_redirects=True)
     video_resp.raise_for_status()
 
-    video_path.write_bytes(video_resp.content)
-    print(f"[Veo] Saved video to: {video_path}")
+    # Save raw Veo output to temp file, then concat with original tail
+    raw_path = OUTPUT_DIR / f"{job_id}_{scenario.type}_raw.mp4"
+    raw_path.write_bytes(video_resp.content)
+    print(f"[Veo] Saved raw Veo video to: {raw_path}")
+
+    final_path = str(OUTPUT_DIR / f"{job_id}_{scenario.type}.mp4")
+    concat_with_original_tail(original_video_bytes, str(raw_path), final_path)
+    raw_path.unlink(missing_ok=True)
 
     if is_gcs_enabled():
+        final_bytes = Path(final_path).read_bytes()
         gcs_blob = f"outputs/{job_id}_{scenario.type}.mp4"
-        upload_bytes_to_gcs(gcs_blob, video_resp.content)
+        upload_bytes_to_gcs(gcs_blob, final_bytes)
 
-    return str(video_path)
+    return final_path
 
 
 async def generate_video(
     scenario: ScenarioPrompt,
     reference_image: types.Image,
+    original_video_bytes: bytes,
     job_id: str,
 ) -> "str | None":
     """Async wrapper around sync Veo generation."""
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(
-        None, generate_video_sync, scenario, reference_image, job_id
+        None, generate_video_sync, scenario, reference_image, original_video_bytes, job_id
     )
 
 
@@ -155,7 +232,7 @@ async def generate_all_videos(
     results = []
     for scenario in scenarios[:max_videos]:
         try:
-            path = await generate_video(scenario, reference_image, job_id)
+            path = await generate_video(scenario, reference_image, video_bytes, job_id)
         except Exception as e:
             print(f"[Veo] Error generating '{scenario.type}': {e}")
             path = None
