@@ -30,13 +30,15 @@ def _get_storage_client() -> storage.Client:
     client_email = os.getenv("GCS_CLIENT_EMAIL")
 
     if private_key and client_email:
-        creds = service_account.Credentials.from_service_account_info({
-            "type": "service_account",
-            "project_id": project,
-            "private_key": private_key.replace("\\n", "\n"),
-            "client_email": client_email,
-            "token_uri": "https://oauth2.googleapis.com/token",
-        })
+        creds = service_account.Credentials.from_service_account_info(
+            {
+                "type": "service_account",
+                "project_id": project,
+                "private_key": private_key.replace("\\n", "\n"),
+                "client_email": client_email,
+                "token_uri": "https://oauth2.googleapis.com/token",
+            }
+        )
         _storage_client = storage.Client(project=project, credentials=creds)
     else:
         _storage_client = storage.Client(project=project)
@@ -58,17 +60,10 @@ def generate_upload_signed_url(blob_path: str, content_type: str = "video/mp4") 
     )
 
 
-def generate_download_signed_url(blob_path: str, expiry_minutes: int = 60) -> str:
-    """Create a V4 signed URL that lets the client GET a file from GCS."""
-    bucket_name = _get_bucket_name()
-    client = _get_storage_client()
+def resolve_cdn_url(blob_path: str) -> str:
+    """Get the CDN URL for the given blob path"""
     full_path = _prefixed(blob_path)
-    blob = client.bucket(bucket_name).blob(full_path)
-    return blob.generate_signed_url(
-        version="v4",
-        expiration=timedelta(minutes=expiry_minutes),
-        method="GET",
-    )
+    return f"https://cdn.seecircle.com/{full_path}"
 
 
 def upload_bytes_to_gcs(blob_path: str, data: bytes, content_type: str = "video/mp4"):
