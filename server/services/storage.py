@@ -26,8 +26,8 @@ def _get_storage_client() -> storage.Client:
         return _storage_client
 
     project = os.getenv("GOOGLE_CLOUD_PROJECT")
-    private_key = os.getenv("GCP_PRIVATE_KEY")
-    client_email = os.getenv("GCP_CLIENT_EMAIL")
+    private_key = os.getenv("GCS_PRIVATE_KEY")
+    client_email = os.getenv("GCS_CLIENT_EMAIL")
 
     if private_key and client_email:
         creds = service_account.Credentials.from_service_account_info({
