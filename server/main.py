@@ -31,3 +31,4 @@ app.mount("/api/videos", StaticFiles(directory=str(video_dir)), name="videos")
 @app.get("/")
 async def health():
     return {"status": "ok", "service": "predict-my-future"}
+
