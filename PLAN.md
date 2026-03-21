@@ -75,23 +75,19 @@ predict-my-future/
 
 ---
 
-## Tech Stack Decisions
+## Tech Stack
 
-### Why Python + FastAPI (not Node.js)?
+### Server: Python + FastAPI + google-genai
 
-We chose Python over Node.js for the server. The Vercel AI SDK is JavaScript-only and therefore off the table, but that's fine — Google's Python SDK (`google-genai`) is their **primary SDK** and handles everything we need in a single package.
+| Component | Choice | Why |
+|-----------|--------|-----|
+| Framework | **FastAPI** | Async-native, auto-generated docs at `/docs`, file upload support, Pydantic validation |
+| AI SDK | **google-genai** | Google's primary SDK — one package for both Gemini and Veo 2 |
+| Video processing | **Pillow** | Extract last frame from uploaded video for Veo 2 reference image |
+| Structured output | **Pydantic** | Type-safe models that double as Gemini response schemas |
+| Async parallel gen | **asyncio.gather()** | Fire all 4 Veo 2 calls simultaneously |
 
-| Aspect | Python (FastAPI + google-genai) | Node.js (Vercel AI SDK + @google/genai) |
-|--------|--------------------------------|----------------------------------------|
-| Google AI SDK maturity | First-class, most docs/examples | Good, but secondary |
-| Gemini multimodal | `client.models.generate_content()` with video bytes | `generateObject()` via Vercel AI SDK |
-| Veo 2 video generation | `client.models.generate_videos()` — same SDK | Needs separate `@google/genai` package |
-| Video processing | Easy (`Pillow` for frame extraction) | Needs ffmpeg bindings |
-| Structured output | Pydantic models | Zod schemas |
-| Async parallel gen | `asyncio.gather()` | `Promise.all()` |
-| One SDK for everything | `google-genai` does Gemini + Veo 2 | Need Vercel AI SDK + Google GenAI SDK |
-
-**Key advantage**: With Python, we use **one SDK** (`google-genai`) for the entire pipeline — scene analysis, prompt generation, AND video generation. No mixing of SDKs.
+**Key advantage**: One SDK (`google-genai`) handles the entire pipeline — scene analysis, prompt generation, AND video generation.
 
 ### Google Gemini — What models?
 
@@ -111,6 +107,55 @@ We chose Python over Node.js for the server. The Vercel AI SDK is JavaScript-onl
 | **Photo** | Fast upload, simpler, works as MVP | Less context, still image-to-video is less natural |
 
 The app should record a **short video clip (3-5 seconds)**. This gives Gemini the richest context for scene understanding and gives Veo 2 a natural starting point for video continuation.
+
+---
+
+## How Generated Videos Feel Like a Continuation
+
+The generated scenarios must feel like they're continuing the user's original video, not random unrelated clips. This is achieved by a **two-part handoff** between Gemini and Veo 2:
+
+```
+User's Video (3-5 sec)
+    │
+    ├──── Full video ──▶ Gemini (understands context, people, actions, mood)
+    │                         │
+    │                         ▼
+    │                    4 detailed prompts grounded in the real scene
+    │
+    └──── Last frame ──▶ Veo 2 (generates video STARTING from this exact image)
+                              │
+                              ▼
+                         4 videos that visually continue from the last frame
+```
+
+### Why the last frame matters
+
+Veo 2's image-to-video mode accepts a **reference image** — it generates motion that begins from that exact visual state. By extracting the last frame of the user's video:
+
+- **Same people** — their positions, clothing, and appearance carry over
+- **Same environment** — the room, lighting, objects, and background match
+- **Same composition** — camera angle and framing are preserved
+- **Seamless transition** — the generated video picks up right where the original left off
+
+Without the reference image, Veo 2 would generate from scratch — random people, random room, no visual connection to the original video.
+
+### What each model sees
+
+| Model | Input | Purpose |
+|-------|-------|---------|
+| **Gemini** | Full video (all frames, audio) | Deeply understand the scene — who's there, what's happening, relationships, mood, objects |
+| **Veo 2** | Last frame (image) + text prompt | Generate video that starts from that exact visual and acts out the scenario |
+
+### Continuity trade-offs by scenario type
+
+| Scenario | Visual continuity | Notes |
+|----------|-------------------|-------|
+| **Positive** (handshake) | High — small natural action | Stays very close to original scene |
+| **Bad** (bored judges) | High — subtle expression change | Mostly same composition |
+| **Insane** (slap) | Medium — bigger action | Physical movement is larger, but setting stays the same |
+| **Funny** (falls off chair) | Medium — physical comedy | More deviation, but still grounded in the original frame |
+
+The prompt engineering step (Step 3) must keep scenarios **physically grounded** in the original scene. Prompts should describe actions involving the actual people/objects visible in the last frame, not introduce entirely new elements.
 
 ---
 
