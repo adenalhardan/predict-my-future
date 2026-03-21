@@ -12,7 +12,7 @@ from services.client import get_veo_client
 from services.storage import is_gcs_enabled, upload_bytes_to_gcs
 
 
-VEO_MODEL = os.getenv("VEO_MODEL", "veo-3.1-generate-001")
+VEO_MODEL = os.getenv("VEO_MODEL", "veo-3.1-fast-generate-001")
 
 OUTPUT_DIR = Path(__file__).resolve().parent.parent / "test_videos" / "generated"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)

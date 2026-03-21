@@ -11,8 +11,10 @@ SYSTEM_INSTRUCTION = (
     "happen in the NEXT 3-5 seconds. Each scenario must be a detailed visual "
     "description suitable for video generation. Keep all scenarios physically "
     "grounded in the original scene — same people, same location, same objects. "
-    "The INSANE scenario is the exception: it CAN introduce a famous person or "
-    "surreal element that was NOT in the original scene.\n\n"
+    "The INSANE scenario is the exception: it CAN introduce surreal, "
+    "physics-defying, or magical elements — but NEVER real famous people or "
+    "celebrities. Think: gravity reverses, objects come alive, clones appear, "
+    "portals open, things shrink/grow, etc.\n\n"
     "IMPORTANT SAFETY GUIDELINES for visual_description:\n"
     "- Never describe violence, harm, threats, or aggressive physical contact.\n"
     "- 'Bad' scenarios should be awkward, embarrassing, or unfortunate — NOT violent.\n"
@@ -45,13 +47,13 @@ SYSTEM_INSTRUCTION = (
     "    },\n"
     "    {\n"
     '      "type": "insane",\n'
-    '      "title": "Trump Crashes Meeting",\n'
-    '      "description": "0.1% chance — Donald Trump unexpectedly walks into the '
-    'meeting and everyone is shocked.",\n'
-    '      "visual_description": "Donald Trump in a suit and red tie strides '
-    "confidently into the workspace from the background. The seated people's jaws "
-    "drop in disbelief, turning around in their chairs. The presenter freezes "
-    'mid-gesture, staring wide-eyed as Trump gives a thumbs up."\n'
+    '      "title": "Zero Gravity",\n'
+    '      "description": "0.1% chance — Gravity suddenly switches off and everyone '
+    'starts floating.",\n'
+    '      "visual_description": "Mid-sentence, the presenter\'s feet lift off the '
+    "ground. The seated people rise out of their chairs, laptops and bags floating "
+    "around them. Everyone grabs at the air in panic, drifting slowly upward with "
+    'wide eyes and flailing limbs."\n'
     "    },\n"
     "    {\n"
     '      "type": "funny",\n'
@@ -62,6 +64,47 @@ SYSTEM_INSTRUCTION = (
     "turns around, and starts twerking energetically. The three seated people burst "
     "out laughing, one nearly falling off their chair. The presenter keeps going with "
     'full commitment, shaking to an invisible beat."\n'
+    "    }\n"
+    "  ]\n"
+    "}\n\n"
+    "EXAMPLE 2 — Input scene: A guy is standing alone on the street talking on his phone.\n"
+    "Expected output:\n"
+    "{\n"
+    '  "scenarios": [\n'
+    "    {\n"
+    '      "type": "positive",\n'
+    '      "title": "Great News",\n'
+    '      "description": "55% chance — He receives amazing news and jumps for joy.",\n'
+    '      "visual_description": "The man\'s eyes widen as he hears something on the phone. '
+    "A huge grin spreads across his face and he leaps into the air with both fists raised, "
+    'phone still in hand. He lands and pumps his fist, practically bouncing with excitement."\n'
+    "    },\n"
+    "    {\n"
+    '      "type": "bad",\n'
+    '      "title": "Devastating Call",\n'
+    '      "description": "20% chance — He gets terrible news and breaks down crying.",\n'
+    '      "visual_description": "The man\'s expression crumbles as he listens to the phone. '
+    "He slowly lowers the phone from his ear, his shoulders slumping. He covers his face "
+    'with his free hand as tears stream down his cheeks, visibly shaking."\n'
+    "    },\n"
+    "    {\n"
+    '      "type": "insane",\n'
+    '      "title": "Liftoff",\n'
+    '      "description": "0.01% chance — He suddenly starts levitating off the ground.",\n'
+    '      "visual_description": "Mid-conversation, the man\'s feet slowly lift off the '
+    "pavement. He rises a few feet into the air, still holding the phone to his ear, "
+    "looking down in total shock. His legs dangle as he floats upward, arms flailing "
+    'for balance."\n'
+    "    },\n"
+    "    {\n"
+    '      "type": "funny",\n'
+    '      "title": "Spontaneous Dance",\n'
+    '      "description": "8% chance — He suddenly breaks into a full dance routine '
+    'on the sidewalk.",\n'
+    '      "visual_description": "The man pockets his phone and suddenly busts into '
+    "a funky dance, sliding his feet and rolling his arms. Passersby stare in confusion "
+    "as he hits increasingly dramatic moves, spinning and pointing at strangers with "
+    'finger guns."\n'
     "    }\n"
     "  ]\n"
     "}"
@@ -79,8 +122,8 @@ async def generate_prompts(scene: SceneAnalysis) -> ScenarioPrompts:
             "instructions. The 4 output types are:\n"
             "1. POSITIVE (type='positive') — The most likely positive outcome\n"
             "2. BAD (type='bad') — A negative or unfortunate outcome\n"
-            "3. INSANE (type='insane') — A wild, unexpected, over-the-top outcome "
-            "(CAN introduce a famous person or surreal element)\n"
+            "3. INSANE (type='insane') — A wild, surreal, physics-defying outcome "
+            "(NO real celebrities — use magical/surreal elements instead)\n"
             "4. FUNNY (type='funny') — A hilarious, comedic outcome\n\n"
             "For each scenario provide:\n"
             "- type: one of 'positive', 'bad', 'insane', 'funny'\n"

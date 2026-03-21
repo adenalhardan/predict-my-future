@@ -19,6 +19,13 @@ spec:
         - name: server
           image: predictmyfuture.azurecr.io/server:latest
           imagePullPolicy: Always
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "500m"
+            limits:
+              memory: "3Gi"
+              cpu: "2"
           env:
             - name: GCS_BUCKET
               value: seecircle-cdn
