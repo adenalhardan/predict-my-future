@@ -233,10 +233,12 @@ async def generate_all_videos(
     max_videos = int(os.getenv("MAX_VIDEOS", "4"))
     selected = scenarios[:max_videos]
 
-    tasks = [
-        generate_video(scenario, reference_image, video_bytes, job_id)
-        for scenario in selected
-    ]
+    async def _staggered(idx, scenario):
+        if idx > 0:
+            await asyncio.sleep(idx * 2)
+        return await generate_video(scenario, reference_image, video_bytes, job_id)
+
+    tasks = [_staggered(i, s) for i, s in enumerate(selected)]
     outcomes = await asyncio.gather(*tasks, return_exceptions=True)
 
     results = []
