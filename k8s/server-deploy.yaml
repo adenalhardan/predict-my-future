@@ -20,6 +20,8 @@ spec:
           image: predictmyfuture.azurecr.io/server:latest
           imagePullPolicy: Always
           env:
+            - name: GCS_BUCKET
+              value: seecircle-cdn
             - name: GCS_CLIENT_EMAIL
               valueFrom:
                 secretKeyRef:

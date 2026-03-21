@@ -22,6 +22,7 @@ def _get_storage_client() -> storage.Client:
     """Build a storage client using service-account env vars when available,
     otherwise fall back to Application Default Credentials."""
     global _storage_client
+<<<<<<< HEAD
     if _storage_client is not None:
         return _storage_client
 
@@ -41,6 +42,25 @@ def _get_storage_client() -> storage.Client:
     else:
         _storage_client = storage.Client(project=project)
 
+=======
+    if _storage_client is None:
+        PROJECT_ID = os.environ["GCS_PROJECT_ID"]
+        CLIENT_EMAIL = os.environ["GCS_CLIENT_EMAIL"]
+        PRIVATE_KEY = os.environ["GCS_PRIVATE_KEY"].replace("\\n", "\n")
+
+        info = {
+            "type": "service_account",
+            "project_id": PROJECT_ID,
+            "private_key": PRIVATE_KEY,
+            "client_email": CLIENT_EMAIL,
+            "token_uri": "https://oauth2.googleapis.com/token",
+        }
+
+        credentials = service_account.Credentials.from_service_account_info(info)
+        _storage_client = storage.Client(
+            project=os.getenv("GOOGLE_CLOUD_PROJECT"), credentials=credentials
+        )
+>>>>>>> 216d40d82728a5823589de8ec187710d890eeaf6
     return _storage_client
 
 
