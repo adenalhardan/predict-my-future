@@ -16,8 +16,6 @@ private enum AppConfig {
 }
 
 private enum PreviewPredictionData {
-    static let enabled = true
-
     static let response = CompletedPredictionResponse(
         prediction: Prediction(
             id: "cdd80e01-f62b-4465-9660-6dc70686eeb2",
@@ -47,10 +45,20 @@ private enum PreviewPredictionData {
         ),
         status: "completed"
     )
+
+    static let pastPredictions = [
+        PastPredictionItem(
+            title: "Aden's past job",
+            subtitle: "Past video",
+            prediction: response.prediction
+        )
+    ]
 }
 
 struct ContentView: View {
     @StateObject private var recorder = CameraRecorder(apiClient: APIClient(baseURL: AppConfig.apiBaseURL))
+    @State private var isShowingPastPredictions = false
+    @State private var selectedPastPrediction: Prediction?
 
     var body: some View {
         ZStack {
@@ -75,27 +83,38 @@ struct ContentView: View {
                 Spacer()
 
                 if !recorder.isShowingLoadingScreen {
-                    Button(action: recorder.recordButtonTapped) {
-                        ZStack {
-                            Circle()
-                                .fill(.white)
-                                .frame(width: 84, height: 84)
-
-                            if recorder.isBusy {
-                                ProgressView()
-                                    .tint(.black)
-                            } else if recorder.isRecording {
-                                RoundedRectangle(cornerRadius: 10)
-                                    .fill(.red)
-                                    .frame(width: 30, height: 30)
-                            } else {
+                    VStack(spacing: 16) {
+                        Button(action: recorder.recordButtonTapped) {
+                            ZStack {
                                 Circle()
-                                    .fill(.red)
-                                    .frame(width: 64, height: 64)
+                                    .fill(.white)
+                                    .frame(width: 84, height: 84)
+
+                                if recorder.isBusy {
+                                    ProgressView()
+                                        .tint(.black)
+                                } else if recorder.isRecording {
+                                    RoundedRectangle(cornerRadius: 10)
+                                        .fill(.red)
+                                        .frame(width: 30, height: 30)
+                                } else {
+                                    Circle()
+                                        .fill(.red)
+                                        .frame(width: 64, height: 64)
+                                }
                             }
                         }
+                        .disabled(!recorder.isReady || recorder.isBusy)
+
+                        Button("Show Past Predictions") {
+                            isShowingPastPredictions = true
+                        }
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 12)
+                        .background(.black.opacity(0.55), in: Capsule())
                     }
-                    .disabled(!recorder.isReady || recorder.isBusy)
                     .padding(.bottom, 40)
                 }
             }
@@ -108,10 +127,10 @@ struct ContentView: View {
                     .transition(.opacity)
             }
 
-            if PreviewPredictionData.enabled {
+            if let selectedPastPrediction {
                 PredictionSlideshowView(
-                    prediction: PreviewPredictionData.response.prediction,
-                    onDismiss: {}
+                    prediction: selectedPastPrediction,
+                    onDismiss: { self.selectedPastPrediction = nil }
                 )
                 .transition(.opacity)
             } else if let predictionResult = recorder.predictionResult {
@@ -125,10 +144,16 @@ struct ContentView: View {
         .background(.black)
         .animation(.easeInOut(duration: 0.2), value: recorder.isShowingLoadingScreen)
         .animation(.easeInOut(duration: 0.2), value: recorder.predictionResult != nil)
+        .animation(.easeInOut(duration: 0.2), value: selectedPastPrediction != nil)
         .task {
-            guard !PreviewPredictionData.enabled else { return }
             recorder.resetForNormalLaunch()
             await recorder.configureIfNeeded()
+        }
+        .sheet(isPresented: $isShowingPastPredictions) {
+            PastPredictionsListView(predictions: PreviewPredictionData.pastPredictions) { prediction in
+                isShowingPastPredictions = false
+                selectedPastPrediction = prediction
+            }
         }
         .alert("Recording Error", isPresented: errorBinding) {
             Button("OK", role: .cancel) {
@@ -148,6 +173,36 @@ struct ContentView: View {
                 }
             }
         )
+    }
+}
+
+private struct PastPredictionsListView: View {
+    let predictions: [PastPredictionItem]
+    let onSelect: (Prediction) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List(predictions) { item in
+                Button {
+                    dismiss()
+                    onSelect(item.prediction)
+                } label: {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(item.title)
+                            .font(.headline)
+                            .foregroundStyle(.primary)
+
+                        Text(item.subtitle)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+            .navigationTitle("Past Predictions")
+        }
     }
 }
 
@@ -811,6 +866,13 @@ enum APIClientError: LocalizedError {
 struct CompletedPredictionResponse: Decodable {
     let prediction: Prediction
     let status: String
+}
+
+struct PastPredictionItem: Identifiable {
+    let id = UUID()
+    let title: String
+    let subtitle: String
+    let prediction: Prediction
 }
 
 struct Prediction: Decodable {
