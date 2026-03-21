@@ -1,13 +1,13 @@
-import os
 from pathlib import Path
-from dotenv import load_dotenv
+
+from dotenv.main import load_dotenv
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+
+from routes.predict import router as predict_router
 
 load_dotenv()
-
-from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
-from fastapi.middleware.cors import CORSMiddleware
-from routes.predict import router as predict_router
 
 app = FastAPI(title="Predict My Future")
 
@@ -32,3 +32,7 @@ app.mount("/api/videos", StaticFiles(directory=str(video_dir)), name="videos")
 async def health():
     return {"status": "ok", "service": "predict-my-future"}
 
+
+@app.get("/api/get-presigned-url")
+async def get_presigned_url():
+    return "TODO"
