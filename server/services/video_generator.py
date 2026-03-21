@@ -186,18 +186,20 @@ def generate_video_sync(
     video_resp = httpx.get(download_url, timeout=120, follow_redirects=True)
     video_resp.raise_for_status()
 
-    # Save raw Veo output to temp file, then concat with original tail
-    raw_path = OUTPUT_DIR / f"{job_id}_{scenario.type}_raw.mp4"
+    job_dir = OUTPUT_DIR / job_id
+    job_dir.mkdir(parents=True, exist_ok=True)
+
+    raw_path = job_dir / f"{scenario.type}_raw.mp4"
     raw_path.write_bytes(video_resp.content)
     print(f"[Veo] Saved raw Veo video to: {raw_path}")
 
-    final_path = str(OUTPUT_DIR / f"{job_id}_{scenario.type}.mp4")
+    final_path = str(job_dir / f"{scenario.type}.mp4")
     concat_with_original_tail(original_video_bytes, str(raw_path), final_path)
     raw_path.unlink(missing_ok=True)
 
     if is_gcs_enabled():
         final_bytes = Path(final_path).read_bytes()
-        gcs_blob = f"outputs/{job_id}_{scenario.type}.mp4"
+        gcs_blob = f"outputs/{job_id}/{scenario.type}.mp4"
         upload_bytes_to_gcs(gcs_blob, final_bytes)
 
     return final_path

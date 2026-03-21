@@ -41,10 +41,10 @@ async def _run_prediction(job_id: str, video_bytes: bytes, mime_type: str):
                 video_url = ""
             elif is_gcs_enabled():
                 video_url = generate_download_signed_url(
-                    f"outputs/{job_id}_{prompt.type}.mp4"
+                    f"outputs/{job_id}/{prompt.type}.mp4"
                 )
             else:
-                video_url = f"/api/videos/{job_id}_{prompt.type}.mp4"
+                video_url = f"/api/videos/{job_id}/{prompt.type}.mp4"
 
             scenarios.append(
                 Scenario(
