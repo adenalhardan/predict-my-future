@@ -15,6 +15,8 @@ spec:
       labels:
         app: server
     spec:
+      nodeSelector:
+        workload: predct
       containers:
         - name: server
           image: predictmyfuture.azurecr.io/server:latest

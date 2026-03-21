@@ -6,12 +6,47 @@
 //
 
 import AVFoundation
+import AVKit
 import Combine
 import SwiftUI
 import UIKit
 
 private enum AppConfig {
     static let apiBaseURL = URL(string: "https://predictmyfuture.backsellai.com")!
+}
+
+private enum PreviewPredictionData {
+    static let enabled = true
+
+    static let response = CompletedPredictionResponse(
+        prediction: Prediction(
+            id: "cdd80e01-f62b-4465-9660-6dc70686eeb2",
+            scenarios: [
+                PredictionScenario(
+                    type: .positive,
+                    description: "65% chance - The speaker's idea is met with enthusiastic agreement and new insights from the listeners.",
+                    videoURL: URL(string: "https://cdn.seecircle.com/predict-future/outputs/cdd80e01-f62b-4465-9660-6dc70686eeb2/positive.mp4")!
+                ),
+                PredictionScenario(
+                    type: .bad,
+                    description: "18% chance - A sudden technical issue disrupts the presentation, causing frustration.",
+                    videoURL: URL(string: "https://cdn.seecircle.com/predict-future/outputs/cdd80e01-f62b-4465-9660-6dc70686eeb2/bad.mp4")!
+                ),
+                PredictionScenario(
+                    type: .insane,
+                    description: "0.1% chance - Gravity suddenly reverses for all inanimate objects in the room, making them float.",
+                    videoURL: URL(string: "https://cdn.seecircle.com/predict-future/outputs/cdd80e01-f62b-4465-9660-6dc70686eeb2/insane.mp4")!
+                ),
+                PredictionScenario(
+                    type: .funny,
+                    description: "7% chance - The speaker accidentally triggers a catchy song and breaks into a spontaneous, awkward dance.",
+                    videoURL: URL(string: "https://cdn.seecircle.com/predict-future/outputs/cdd80e01-f62b-4465-9660-6dc70686eeb2/funny.mp4")!
+                ),
+            ],
+            sceneAnalysis: "{\"people\":\"Four young men are prominently featured. One stands in a maroon shirt and jeans, actively speaking. Three others are seated: two on a grey sofa (one in a light blue polo, one in a dark green shirt and baseball cap) and one on a black chair (in a black long-sleeve shirt). All appear to be in their 20s or early 30s. Other individuals are visible in the background, further away.\",\"actions\":\"The standing man is leading a discussion, gesturing with his hands as he speaks. The three seated men are listening attentively, some glancing at their laptops, others at a notebook, and all occasionally looking at the speaker. The overall action suggests a focused group discussion or presentation within a larger event.\",\"setting\":\"The scene is set indoors in a large, open, industrial-style space with high white ceilings and exposed beams. The floor is light-colored concrete with some artistic markings. Large windows in the background allow natural light. There are various seating arrangements, including a grey sofa and black chairs, and tables in the distance. A black curtain or divider is visible in the background, suggesting a designated area for a presentation or stage.\",\"mood\":\"The mood is focused, collaborative, and engaged. The participants appear to be deeply involved in the discussion, indicating a productive and perhaps energetic atmosphere, characteristic of a workshop or hackathon.\",\"key_objects\":\"Key objects include two laptops, a notebook and pen, two black backpacks, two beverage cans on the floor, the grey sofa, black chairs, and visible ID badges/lanyards worn by the seated individuals.\"}"
+        ),
+        status: "completed"
+    )
 }
 
 struct ContentView: View {
@@ -72,10 +107,27 @@ struct ContentView: View {
                 )
                     .transition(.opacity)
             }
+
+            if PreviewPredictionData.enabled {
+                PredictionSlideshowView(
+                    prediction: PreviewPredictionData.response.prediction,
+                    onDismiss: {}
+                )
+                .transition(.opacity)
+            } else if let predictionResult = recorder.predictionResult {
+                PredictionSlideshowView(
+                    prediction: predictionResult.prediction,
+                    onDismiss: recorder.dismissPredictionResults
+                )
+                .transition(.opacity)
+            }
         }
         .background(.black)
         .animation(.easeInOut(duration: 0.2), value: recorder.isShowingLoadingScreen)
+        .animation(.easeInOut(duration: 0.2), value: recorder.predictionResult != nil)
         .task {
+            guard !PreviewPredictionData.enabled else { return }
+            recorder.resetForNormalLaunch()
             await recorder.configureIfNeeded()
         }
         .alert("Recording Error", isPresented: errorBinding) {
@@ -95,6 +147,108 @@ struct ContentView: View {
                     recorder.errorMessage = nil
                 }
             }
+        )
+    }
+}
+
+private struct PredictionSlideshowView: View {
+    let prediction: Prediction
+    let onDismiss: () -> Void
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            LinearGradient(
+                colors: [Color.black, Color(red: 0.09, green: 0.1, blue: 0.18)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea()
+
+            VStack(spacing: 20) {
+                VStack(spacing: 8) {
+                    Text("🔮 Your Predicted Futures")
+                        .font(.title2.weight(.bold))
+                        .foregroundStyle(.white)
+                }
+                .padding(.top, 72)
+
+                TabView {
+                    ForEach(prediction.scenarios) { scenario in
+                        ScenarioSlideView(scenario: scenario)
+                            .padding(.horizontal, 20)
+                            .padding(.bottom, 40)
+                    }
+                }
+                .tabViewStyle(.page(indexDisplayMode: .always))
+            }
+
+            Button(action: onDismiss) {
+                Image(systemName: "xmark")
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 40, height: 40)
+                    .background(.white.opacity(0.14), in: Circle())
+            }
+            .padding(.top, 18)
+            .padding(.trailing, 18)
+        }
+    }
+}
+
+private struct ScenarioSlideView: View {
+    let scenario: PredictionScenario
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Group {
+                if let videoURL = scenario.videoURL {
+                    VideoPlayer(player: AVPlayer(url: videoURL))
+                } else {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 28, style: .continuous)
+                            .fill(.white.opacity(0.08))
+
+                        VStack(spacing: 12) {
+                            Image(systemName: "video.slash.fill")
+                                .font(.system(size: 30, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.8))
+                            Text("Video unavailable for this scenario")
+                                .font(.headline)
+                                .foregroundStyle(.white.opacity(0.88))
+                        }
+                        .padding(24)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 420)
+            .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+            .overlay(alignment: .topLeading) {
+                Text("\(scenario.probabilityText) probability")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(.black.opacity(0.72), in: Capsule())
+                    .padding(16)
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                Text(scenario.description)
+                    .font(.body)
+                    .foregroundStyle(.white.opacity(0.86))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.horizontal, 4)
+
+            Spacer(minLength: 0)
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 32, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 32, style: .continuous)
+                .stroke(.white.opacity(0.12), lineWidth: 1)
         )
     }
 }
@@ -184,6 +338,7 @@ final class CameraRecorder: NSObject, ObservableObject {
     @Published private(set) var statusMessage = "Preparing camera..."
     @Published private(set) var pollResultText: String?
     @Published private(set) var currentJobID: String?
+    @Published private(set) var predictionResult: CompletedPredictionResponse?
 
     nonisolated(unsafe) let session = AVCaptureSession()
 
@@ -242,6 +397,7 @@ final class CameraRecorder: NSObject, ObservableObject {
 
         currentJobID = nil
         pollResultText = nil
+        predictionResult = nil
         statusMessage = "Recording..."
         isRecording = true
 
@@ -255,6 +411,7 @@ final class CameraRecorder: NSObject, ObservableObject {
         isShowingLoadingScreen = true
         currentJobID = nil
         pollResultText = nil
+        predictionResult = nil
         statusMessage = "Finishing recording..."
 
         do {
@@ -286,6 +443,7 @@ final class CameraRecorder: NSObject, ObservableObject {
                     }
                 }
                 pollResultText = finalResult
+                predictionResult = try apiClient.decodeCompletedPrediction(from: finalResult)
                 statusMessage = "Prediction complete"
                 isShowingLoadingScreen = false
             } else {
@@ -298,6 +456,23 @@ final class CameraRecorder: NSObject, ObservableObject {
         }
 
         isBusy = false
+    }
+
+    func dismissPredictionResults() {
+        predictionResult = nil
+        pollResultText = nil
+        currentJobID = nil
+        statusMessage = isReady ? "Ready to record" : statusMessage
+    }
+
+    func resetForNormalLaunch() {
+        predictionResult = nil
+        pollResultText = nil
+        currentJobID = nil
+        isShowingLoadingScreen = false
+        if !isRecording && !isBusy {
+            statusMessage = configuredSession ? (isReady ? "Ready to record" : "Preparing camera...") : "Preparing camera..."
+        }
     }
 
     private func stopRecording() async throws -> URL {
@@ -488,6 +663,21 @@ struct APIClient {
         }
     }
 
+    func decodeCompletedPrediction(from rawText: String) throws -> CompletedPredictionResponse {
+        guard let data = rawText.data(using: .utf8) else {
+            throw APIClientError.invalidResponse
+        }
+
+        let decoder = JSONDecoder()
+        let response = try decoder.decode(CompletedPredictionResponse.self, from: data)
+
+        guard response.status.caseInsensitiveCompare("completed") == .orderedSame else {
+            throw APIClientError.invalidResponse
+        }
+
+        return response
+    }
+
     private func fetchJobStatus(jobID: String) async throws -> PollResponse {
         var components = URLComponents(url: baseURL.appending(path: "/api/poll"), resolvingAgainstBaseURL: false)
         components?.queryItems = [
@@ -616,4 +806,77 @@ enum APIClientError: LocalizedError {
             return message
         }
     }
+}
+
+struct CompletedPredictionResponse: Decodable {
+    let prediction: Prediction
+    let status: String
+}
+
+struct Prediction: Decodable {
+    let id: String
+    let scenarios: [PredictionScenario]
+    let sceneAnalysis: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case scenarios
+        case sceneAnalysis = "scene_analysis"
+    }
+}
+
+struct PredictionScenario: Decodable, Identifiable {
+    let type: ScenarioType
+    let description: String
+    let videoURL: URL?
+
+    var id: String {
+        type.rawValue
+    }
+
+    var probabilityText: String {
+        switch type {
+        case .positive:
+            return "82%"
+        case .bad:
+            return "41%"
+        case .insane:
+            return "9%"
+        case .funny:
+            return "27%"
+        }
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case type
+        case description
+        case videoURL = "video_url"
+    }
+    
+    init(type: ScenarioType, description: String, videoURL: URL) {
+        self.type = type
+        self.description = description
+        self.videoURL = videoURL
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        type = try container.decode(ScenarioType.self, forKey: .type)
+        description = try container.decode(String.self, forKey: .description)
+
+        let rawVideoURL = try container.decodeIfPresent(String.self, forKey: .videoURL)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let rawVideoURL, !rawVideoURL.isEmpty {
+            videoURL = URL(string: rawVideoURL)
+        } else {
+            videoURL = nil
+        }
+    }
+}
+
+enum ScenarioType: String, Decodable {
+    case positive
+    case bad
+    case insane
+    case funny
 }
