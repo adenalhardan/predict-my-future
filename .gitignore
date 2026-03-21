@@ -6,3 +6,4 @@ venv/
 xcuserdata/
 *.pyc
 .env
+*.xcuserstate
