@@ -21,6 +21,7 @@ struct ContentView: View {
         ZStack {
             CameraPreviewView(session: recorder.session)
                 .ignoresSafeArea()
+                .opacity(recorder.isShowingLoadingScreen ? 0.18 : 1)
 
             VStack {
                 HStack {
@@ -38,31 +39,42 @@ struct ContentView: View {
 
                 Spacer()
 
-                Button(action: recorder.recordButtonTapped) {
-                    ZStack {
-                        Circle()
-                            .fill(.white)
-                            .frame(width: 84, height: 84)
-
-                        if recorder.isBusy {
-                            ProgressView()
-                                .tint(.black)
-                        } else if recorder.isRecording {
-                            RoundedRectangle(cornerRadius: 10)
-                                .fill(.red)
-                                .frame(width: 30, height: 30)
-                        } else {
+                if !recorder.isShowingLoadingScreen {
+                    Button(action: recorder.recordButtonTapped) {
+                        ZStack {
                             Circle()
-                                .fill(.red)
-                                .frame(width: 64, height: 64)
+                                .fill(.white)
+                                .frame(width: 84, height: 84)
+
+                            if recorder.isBusy {
+                                ProgressView()
+                                    .tint(.black)
+                            } else if recorder.isRecording {
+                                RoundedRectangle(cornerRadius: 10)
+                                    .fill(.red)
+                                    .frame(width: 30, height: 30)
+                            } else {
+                                Circle()
+                                    .fill(.red)
+                                    .frame(width: 64, height: 64)
+                            }
                         }
                     }
+                    .disabled(!recorder.isReady || recorder.isBusy)
+                    .padding(.bottom, 40)
                 }
-                .disabled(!recorder.isReady || recorder.isBusy)
-                .padding(.bottom, 40)
+            }
+
+            if recorder.isShowingLoadingScreen {
+                LoadingOverlay(
+                    statusMessage: recorder.statusMessage,
+                    pollResultText: recorder.pollResultText
+                )
+                    .transition(.opacity)
             }
         }
         .background(.black)
+        .animation(.easeInOut(duration: 0.2), value: recorder.isShowingLoadingScreen)
         .task {
             await recorder.configureIfNeeded()
         }
@@ -84,6 +96,53 @@ struct ContentView: View {
                 }
             }
         )
+    }
+}
+
+private struct LoadingOverlay: View {
+    let statusMessage: String
+    let pollResultText: String?
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.72)
+                .ignoresSafeArea()
+
+            VStack(spacing: 18) {
+                ProgressView()
+                    .scaleEffect(1.4)
+                    .tint(.white)
+
+                Text("Processing your video")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(.white)
+
+                Text(statusMessage)
+                    .font(.footnote)
+                    .foregroundStyle(.white.opacity(0.8))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+
+                if let pollResultText, !pollResultText.isEmpty {
+                    ScrollView {
+                        Text(pollResultText)
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(.white.opacity(0.9))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(14)
+                    }
+                    .frame(maxHeight: 220)
+                    .background(.black.opacity(0.22), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                }
+            }
+            .padding(28)
+            .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .stroke(.white.opacity(0.12), lineWidth: 1)
+            )
+            .padding(.horizontal, 28)
+        }
     }
 }
 
@@ -121,7 +180,10 @@ final class CameraRecorder: NSObject, ObservableObject {
     @Published private(set) var isBusy = false
     @Published private(set) var isReady = false
     @Published private(set) var isRecording = false
+    @Published private(set) var isShowingLoadingScreen = false
     @Published private(set) var statusMessage = "Preparing camera..."
+    @Published private(set) var pollResultText: String?
+    @Published private(set) var currentJobID: String?
 
     nonisolated(unsafe) let session = AVCaptureSession()
 
@@ -178,6 +240,8 @@ final class CameraRecorder: NSObject, ObservableObject {
 
         try? FileManager.default.removeItem(at: outputURL)
 
+        currentJobID = nil
+        pollResultText = nil
         statusMessage = "Recording..."
         isRecording = true
 
@@ -188,6 +252,9 @@ final class CameraRecorder: NSObject, ObservableObject {
 
     private func finishRecordingAndUpload() async {
         isBusy = true
+        isShowingLoadingScreen = true
+        currentJobID = nil
+        pollResultText = nil
         statusMessage = "Finishing recording..."
 
         do {
@@ -208,13 +275,26 @@ final class CameraRecorder: NSObject, ObservableObject {
             try? FileManager.default.removeItem(at: mp4URL)
 
             if let jobID = uploadInfo.jobID, !jobID.isEmpty {
-                statusMessage = "Upload complete. Job ID: \(jobID)"
+                currentJobID = jobID
+                statusMessage = "Upload complete. Starting prediction..."
+                try await apiClient.startPrediction(jobID: jobID)
+
+                statusMessage = "Prediction started. Checking job status..."
+                let finalResult = try await apiClient.pollJobStatus(jobID: currentJobID ?? jobID) { result in
+                    Task { @MainActor in
+                        self.pollResultText = result
+                    }
+                }
+                pollResultText = finalResult
+                statusMessage = "Prediction complete"
+                isShowingLoadingScreen = false
             } else {
                 statusMessage = "Upload complete"
             }
         } catch {
             errorMessage = error.localizedDescription
             statusMessage = "Upload failed"
+            isShowingLoadingScreen = false
         }
 
         isBusy = false
@@ -379,6 +459,55 @@ struct APIClient {
         try validate(response: response, data: nil)
     }
 
+    func startPrediction(jobID: String) async throws {
+        let url = baseURL.appending(path: "/api/predict/start")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["job_id": jobID])
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validate(response: response, data: data)
+    }
+
+    func pollJobStatus(
+        jobID: String,
+        onStatusUpdate: @escaping @Sendable (String) -> Void
+    ) async throws -> String {
+        while true {
+            let response = try await fetchJobStatus(jobID: jobID)
+            onStatusUpdate(response.rawText)
+
+            if response.status?.caseInsensitiveCompare("processing") != .orderedSame {
+                print(response.rawText)
+                return response.rawText
+            }
+
+            try await Task.sleep(for: .seconds(2))
+        }
+    }
+
+    private func fetchJobStatus(jobID: String) async throws -> PollResponse {
+        var components = URLComponents(url: baseURL.appending(path: "/api/poll"), resolvingAgainstBaseURL: false)
+        components?.queryItems = [
+            URLQueryItem(name: "job_id", value: jobID),
+        ]
+
+        guard let url = components?.url else {
+            throw APIClientError.invalidEndpoint
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validate(response: response, data: data)
+
+        return try decodePollResponse(from: data)
+    }
+
     private func decodeUploadInfo(from data: Data) throws -> PresignedUploadInfo {
         if let rawString = String(data: data, encoding: .utf8)?
             .trimmingCharacters(in: .whitespacesAndNewlines),
@@ -408,6 +537,23 @@ struct APIClient {
         return PresignedUploadInfo(uploadURL: uploadURL, jobID: jobID)
     }
 
+    private func decodePollResponse(from data: Data) throws -> PollResponse {
+        if let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+           JSONSerialization.isValidJSONObject(object),
+           let prettyData = try? JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted]),
+           let prettyText = String(data: prettyData, encoding: .utf8) {
+            let status = object["status"] as? String
+            return PollResponse(rawText: prettyText, status: status)
+        }
+
+        if let rawText = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !rawText.isEmpty {
+            return PollResponse(rawText: rawText, status: nil)
+        }
+
+        throw APIClientError.invalidResponse
+    }
+
     private func validate(response: URLResponse, data: Data?) throws {
         guard let httpResponse = response as? HTTPURLResponse else {
             throw APIClientError.invalidResponse
@@ -425,6 +571,11 @@ struct APIClient {
 struct PresignedUploadInfo {
     let uploadURL: URL
     let jobID: String?
+}
+
+struct PollResponse {
+    let rawText: String
+    let status: String?
 }
 
 enum CameraRecorderError: LocalizedError {
