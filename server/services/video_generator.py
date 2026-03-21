@@ -223,7 +223,7 @@ async def generate_all_videos(
     video_bytes: bytes,
     job_id: str,
 ) -> "list[tuple[ScenarioPrompt, str | None]]":
-    """Generate all 4 scenario videos sequentially to avoid rate limits.
+    """Generate all scenario videos concurrently.
 
     Returns list of (scenario, path_or_none) tuples.
     """
@@ -231,13 +231,20 @@ async def generate_all_videos(
     reference_image = pil_to_genai_image(pil_frame)
 
     max_videos = int(os.getenv("MAX_VIDEOS", "4"))
+    selected = scenarios[:max_videos]
+
+    tasks = [
+        generate_video(scenario, reference_image, video_bytes, job_id)
+        for scenario in selected
+    ]
+    outcomes = await asyncio.gather(*tasks, return_exceptions=True)
+
     results = []
-    for scenario in scenarios[:max_videos]:
-        try:
-            path = await generate_video(scenario, reference_image, video_bytes, job_id)
-        except Exception as e:
-            print(f"[Veo] Error generating '{scenario.type}': {e}")
-            path = None
-        results.append((scenario, path))
+    for scenario, outcome in zip(selected, outcomes):
+        if isinstance(outcome, Exception):
+            print(f"[Veo] Error generating '{scenario.type}': {outcome}")
+            results.append((scenario, None))
+        else:
+            results.append((scenario, outcome))
 
     return results
