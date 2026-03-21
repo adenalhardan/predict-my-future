@@ -25,7 +25,7 @@ async def _run_prediction(job_id: str, video_bytes: bytes, mime_type: str):
 
         prompts = await generate_prompts(scene)
 
-        video_paths = await generate_all_videos(
+        results = await generate_all_videos(
             prompts.scenarios, video_bytes, job_id
         )
 
@@ -34,9 +34,9 @@ async def _run_prediction(job_id: str, video_bytes: bytes, mime_type: str):
                 type=prompt.type,
                 title=prompt.title,
                 description=prompt.description,
-                video_url=f"/api/videos/{job_id}_{prompt.type}.mp4",
+                video_url=f"/api/videos/{job_id}_{prompt.type}.mp4" if path else "",
             )
-            for prompt, path in zip(prompts.scenarios, video_paths)
+            for prompt, path in results
         ]
 
         jobs[job_id] = JobStatus(
@@ -62,7 +62,7 @@ async def predict(
     """
     job_id = str(uuid.uuid4())
     video_bytes = await video.read()
-    mime_type = video.content_type or "video/mp4"
+    mime_type = _resolve_mime_type(video)
 
     jobs[job_id] = JobStatus(status="pending")
     background_tasks.add_task(_run_prediction, job_id, video_bytes, mime_type)
@@ -70,11 +70,26 @@ async def predict(
     return {"job_id": job_id}
 
 
+def _resolve_mime_type(upload: UploadFile) -> str:
+    """Determine the correct MIME type from the upload or filename."""
+    ct = upload.content_type
+    if ct and ct != "application/octet-stream":
+        return ct
+    name = (upload.filename or "").lower()
+    if name.endswith(".mp4"):
+        return "video/mp4"
+    if name.endswith(".mov"):
+        return "video/quicktime"
+    if name.endswith(".webm"):
+        return "video/webm"
+    return "video/mp4"
+
+
 @router.post("/test/analyze")
 async def test_analyze(video: UploadFile = File(...)):
     """Test endpoint: only runs scene analysis (step 2). No video generation."""
     video_bytes = await video.read()
-    mime_type = video.content_type or "video/mp4"
+    mime_type = _resolve_mime_type(video)
     scene = await analyze_scene(video_bytes, mime_type)
     return {"scene_analysis": scene.model_dump()}
 
@@ -83,7 +98,7 @@ async def test_analyze(video: UploadFile = File(...)):
 async def test_prompts(video: UploadFile = File(...)):
     """Test endpoint: runs scene analysis + prompt generation (steps 2-3). No video generation."""
     video_bytes = await video.read()
-    mime_type = video.content_type or "video/mp4"
+    mime_type = _resolve_mime_type(video)
     scene = await analyze_scene(video_bytes, mime_type)
     prompts = await generate_prompts(scene)
     return {

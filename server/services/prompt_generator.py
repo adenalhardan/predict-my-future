@@ -3,7 +3,7 @@ from models.schemas import SceneAnalysis, ScenarioPrompts
 from services.client import get_client
 
 
-MODEL = "gemini-2.5-flash-preview-04-17"
+MODEL = "gemini-2.5-flash"
 
 SYSTEM_INSTRUCTION = (
     "You are a creative scenario writer for a 'predict the future' app. "
@@ -11,7 +11,12 @@ SYSTEM_INSTRUCTION = (
     "happen in the NEXT 3-5 seconds. Each scenario must be a detailed visual "
     "description suitable for video generation. Keep all scenarios physically "
     "grounded in the original scene — same people, same location, same objects. "
-    "Do NOT introduce new characters or locations."
+    "Do NOT introduce new characters or locations.\n\n"
+    "IMPORTANT SAFETY GUIDELINES for visual_description:\n"
+    "- Never describe violence, harm, threats, or aggressive physical contact.\n"
+    "- 'Bad' scenarios should be awkward, embarrassing, or unfortunate — NOT violent.\n"
+    "- 'Insane' scenarios should be surreal or absurd — NOT dangerous.\n"
+    "- Keep all scenarios family-friendly and suitable for AI video generation."
 )
 
 

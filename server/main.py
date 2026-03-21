@@ -21,9 +21,7 @@ app.add_middleware(
 app.include_router(predict_router)
 
 # Serve generated videos as static files
-import tempfile
-
-video_dir = Path(tempfile.gettempdir()) / "predict-my-future" / "videos"
+video_dir = Path(__file__).resolve().parent / "test_videos" / "generated"
 video_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/api/videos", StaticFiles(directory=str(video_dir)), name="videos")
 
