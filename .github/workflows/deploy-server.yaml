@@ -1,0 +1,44 @@
+name: Deploy server
+
+permissions:
+  id-token: write
+  contents: read
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - server/**
+      - .github/workflows/deploy-server.yaml
+
+jobs:
+  deploy-server:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Authenticate with Azure
+        uses: azure/login@v1
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Build image
+        run: |-
+          az acr login --name predictmyfuture
+          IMAGE=predictmyfuture.azurecr.io/server:latest
+          docker build -t $IMAGE ./server
+          docker push $IMAGE
+
+      - name: Deploy
+        run: |-
+          az aks get-credentials --resource-group seecircle-us --name seecircle-us
+          kubectl rollout restart deploy server -n predictmyfuture
+
+concurrency:
+  group: deploy-server
+  cancel-in-progress: true

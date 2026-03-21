@@ -1,0 +1,27 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: server
+  namespace: predictmyfuture
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - predictmyfuture.backsellai.com
+      secretName: tls-cert
+  rules:
+  - host: predictmyfuture.backsellai.com
+    http:
+      paths:
+        - path: /
+          pathType: Prefix
+          backend:
+            service:
+              name: server
+              port:
+                number: 80
