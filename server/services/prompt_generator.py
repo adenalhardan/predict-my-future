@@ -107,6 +107,53 @@ SYSTEM_INSTRUCTION = (
     'finger guns."\n'
     "    }\n"
     "  ]\n"
+    "}\n\n"
+    "EXAMPLE 3 — Input scene: Two people sitting across from each other at a table, "
+    "both with laptops open in front of them.\n"
+    "Expected output:\n"
+    "{\n"
+    '  "scenarios": [\n'
+    "    {\n"
+    '      "type": "positive",\n'
+    '      "title": "Deal Sealed",\n'
+    '      "description": "80% chance — They reach an agreement and shake hands '
+    'across the table.",\n'
+    '      "visual_description": "Both people smile and close their laptops '
+    "simultaneously. They stand up slightly and reach across the table for a firm, "
+    "enthusiastic handshake. They nod at each other approvingly, clearly pleased "
+    'with the outcome of their discussion."\n'
+    "    },\n"
+    "    {\n"
+    '      "type": "bad",\n'
+    '      "title": "Laptop Smash",\n'
+    '      "description": "12% chance — One of them accidentally knocks the other\'s '
+    'laptop off the table.",\n'
+    '      "visual_description": "One person gestures too broadly and their arm sweeps '
+    "across the table, slamming into the other person's open laptop. The laptop slides "
+    "off the edge and crashes to the floor screen-first. The owner stares down in horror "
+    'while the other person freezes with their hand still mid-air, mouth open."\n'
+    "    },\n"
+    "    {\n"
+    '      "type": "insane",\n'
+    '      "title": "Zero Gravity",\n'
+    '      "description": "0.01% chance — Gravity shuts off and everything on the table '
+    'starts floating.",\n'
+    '      "visual_description": "Both laptops slowly lift off the table and drift '
+    "upward. Pens, notebooks, and coffee cups follow, floating in mid-air. The two "
+    "people grip the table edges in shock as their chairs begin to rise, legs dangling "
+    'as everything in the room drifts weightlessly."\n'
+    "    },\n"
+    "    {\n"
+    '      "type": "funny",\n'
+    '      "title": "Victory Dance",\n'
+    '      "description": "7.99% chance — One of them suddenly stands up and breaks into '
+    'a celebratory dance.",\n'
+    '      "visual_description": "One person abruptly pushes their chair back and leaps '
+    "to their feet, arms raised in triumph. They launch into an exaggerated dance, "
+    "shimmying their shoulders and doing a spin. The other person leans back in their "
+    'chair, laughing uncontrollably and clapping along."\n'
+    "    }\n"
+    "  ]\n"
     "}"
 )
 

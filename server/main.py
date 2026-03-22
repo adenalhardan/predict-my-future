@@ -27,6 +27,10 @@ video_dir = Path(__file__).resolve().parent / "test_videos" / "generated"
 video_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/api/videos", StaticFiles(directory=str(video_dir)), name="videos")
 
+# Serve test input videos and demo page
+test_dir = Path(__file__).resolve().parent / "test_videos"
+app.mount("/test", StaticFiles(directory=str(test_dir), html=True), name="test")
+
 
 @app.get("/")
 async def health():
