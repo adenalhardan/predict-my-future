@@ -15,46 +15,6 @@ private enum AppConfig {
     static let apiBaseURL = URL(string: "https://predictmyfuture.backsellai.com")!
 }
 
-private enum PreviewPredictionData {
-    static let response = CompletedPredictionResponse(
-        prediction: Prediction(
-            id: "cdd80e01-f62b-4465-9660-6dc70686eeb2",
-            scenarios: [
-                PredictionScenario(
-                    type: .positive,
-                    description: "65% chance - The speaker's idea is met with enthusiastic agreement and new insights from the listeners.",
-                    videoURL: URL(string: "https://cdn.seecircle.com/predict-future/outputs/cdd80e01-f62b-4465-9660-6dc70686eeb2/positive.mp4")!
-                ),
-                PredictionScenario(
-                    type: .bad,
-                    description: "18% chance - A sudden technical issue disrupts the presentation, causing frustration.",
-                    videoURL: URL(string: "https://cdn.seecircle.com/predict-future/outputs/cdd80e01-f62b-4465-9660-6dc70686eeb2/bad.mp4")!
-                ),
-                PredictionScenario(
-                    type: .insane,
-                    description: "0.1% chance - Gravity suddenly reverses for all inanimate objects in the room, making them float.",
-                    videoURL: URL(string: "https://cdn.seecircle.com/predict-future/outputs/cdd80e01-f62b-4465-9660-6dc70686eeb2/insane.mp4")!
-                ),
-                PredictionScenario(
-                    type: .funny,
-                    description: "7% chance - The speaker accidentally triggers a catchy song and breaks into a spontaneous, awkward dance.",
-                    videoURL: URL(string: "https://cdn.seecircle.com/predict-future/outputs/cdd80e01-f62b-4465-9660-6dc70686eeb2/funny.mp4")!
-                ),
-            ],
-            sceneAnalysis: "{\"people\":\"Four young men are prominently featured. One stands in a maroon shirt and jeans, actively speaking. Three others are seated: two on a grey sofa (one in a light blue polo, one in a dark green shirt and baseball cap) and one on a black chair (in a black long-sleeve shirt). All appear to be in their 20s or early 30s. Other individuals are visible in the background, further away.\",\"actions\":\"The standing man is leading a discussion, gesturing with his hands as he speaks. The three seated men are listening attentively, some glancing at their laptops, others at a notebook, and all occasionally looking at the speaker. The overall action suggests a focused group discussion or presentation within a larger event.\",\"setting\":\"The scene is set indoors in a large, open, industrial-style space with high white ceilings and exposed beams. The floor is light-colored concrete with some artistic markings. Large windows in the background allow natural light. There are various seating arrangements, including a grey sofa and black chairs, and tables in the distance. A black curtain or divider is visible in the background, suggesting a designated area for a presentation or stage.\",\"mood\":\"The mood is focused, collaborative, and engaged. The participants appear to be deeply involved in the discussion, indicating a productive and perhaps energetic atmosphere, characteristic of a workshop or hackathon.\",\"key_objects\":\"Key objects include two laptops, a notebook and pen, two black backpacks, two beverage cans on the floor, the grey sofa, black chairs, and visible ID badges/lanyards worn by the seated individuals.\"}"
-        ),
-        status: "completed"
-    )
-
-    static let pastPredictions = [
-        PastPredictionItem(
-            title: "Aden's past job",
-            subtitle: "Past video",
-            prediction: response.prediction
-        )
-    ]
-}
-
 struct ContentView: View {
     @StateObject private var recorder = CameraRecorder(apiClient: APIClient(baseURL: AppConfig.apiBaseURL))
     @State private var isShowingPastPredictions = false
@@ -150,7 +110,7 @@ struct ContentView: View {
             await recorder.configureIfNeeded()
         }
         .sheet(isPresented: $isShowingPastPredictions) {
-            PastPredictionsListView(predictions: PreviewPredictionData.pastPredictions) { prediction in
+            PastPredictionsListView(predictions: recorder.pastPredictions) { prediction in
                 isShowingPastPredictions = false
                 selectedPastPrediction = prediction
             }
@@ -184,21 +144,31 @@ private struct PastPredictionsListView: View {
 
     var body: some View {
         NavigationStack {
-            List(predictions) { item in
-                Button {
-                    dismiss()
-                    onSelect(item.prediction)
-                } label: {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(item.title)
-                            .font(.headline)
-                            .foregroundStyle(.primary)
+            Group {
+                if predictions.isEmpty {
+                    ContentUnavailableView(
+                        "No Past Predictions",
+                        systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90",
+                        description: Text("Completed predictions will show up here automatically.")
+                    )
+                } else {
+                    List(predictions) { item in
+                        Button {
+                            dismiss()
+                            onSelect(item.prediction)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(item.title)
+                                    .font(.headline)
+                                    .foregroundStyle(.primary)
 
-                        Text(item.subtitle)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                                Text(item.subtitle)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(.vertical, 4)
+                        }
                     }
-                    .padding(.vertical, 4)
                 }
             }
             .navigationTitle("Past Predictions")
@@ -278,15 +248,6 @@ private struct ScenarioSlideView: View {
             .frame(maxWidth: .infinity)
             .frame(height: 420)
             .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-            .overlay(alignment: .topLeading) {
-                Text("\(scenario.probabilityText) probability")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(.black.opacity(0.72), in: Capsule())
-                    .padding(16)
-            }
 
             VStack(alignment: .leading, spacing: 10) {
                 Text(scenario.description)
@@ -385,6 +346,7 @@ final class PreviewView: UIView {
 
 @MainActor
 final class CameraRecorder: NSObject, ObservableObject {
+    @Published private(set) var pastPredictions: [PastPredictionItem] = []
     @Published var errorMessage: String?
     @Published private(set) var isBusy = false
     @Published private(set) var isReady = false
@@ -400,6 +362,7 @@ final class CameraRecorder: NSObject, ObservableObject {
     private let apiClient: APIClient
     nonisolated(unsafe) private let movieOutput = AVCaptureMovieFileOutput()
     private let sessionQueue = DispatchQueue(label: "predictmyfuture.camera.session")
+    private let storage = PastPredictionsStore()
 
     private var configuredSession = false
     private var currentRecordingContinuation: CheckedContinuation<URL, Error>?
@@ -407,6 +370,7 @@ final class CameraRecorder: NSObject, ObservableObject {
     init(apiClient: APIClient) {
         self.apiClient = apiClient
         super.init()
+        pastPredictions = storage.loadItems()
     }
 
     func configureIfNeeded() async {
@@ -498,7 +462,9 @@ final class CameraRecorder: NSObject, ObservableObject {
                     }
                 }
                 pollResultText = finalResult
-                predictionResult = try apiClient.decodeCompletedPrediction(from: finalResult)
+                let completedPrediction = try apiClient.decodeCompletedPrediction(from: finalResult)
+                predictionResult = completedPrediction
+                pastPredictions = storage.append(prediction: completedPrediction.prediction)
                 statusMessage = "Prediction complete"
                 isShowingLoadingScreen = false
             } else {
@@ -869,13 +835,13 @@ struct CompletedPredictionResponse: Decodable {
 }
 
 struct PastPredictionItem: Identifiable {
-    let id = UUID()
+    let id: String
     let title: String
     let subtitle: String
     let prediction: Prediction
 }
 
-struct Prediction: Decodable {
+struct Prediction: Codable {
     let id: String
     let scenarios: [PredictionScenario]
     let sceneAnalysis: String?
@@ -887,7 +853,7 @@ struct Prediction: Decodable {
     }
 }
 
-struct PredictionScenario: Decodable, Identifiable {
+struct PredictionScenario: Codable, Identifiable {
     let type: ScenarioType
     let description: String
     let videoURL: URL?
@@ -936,9 +902,73 @@ struct PredictionScenario: Decodable, Identifiable {
     }
 }
 
-enum ScenarioType: String, Decodable {
+enum ScenarioType: String, Codable {
     case positive
     case bad
     case insane
     case funny
+}
+
+private struct StoredPastPrediction: Codable {
+    let prediction: Prediction
+    let createdAt: Date
+
+    var item: PastPredictionItem {
+        PastPredictionItem(
+            id: prediction.id,
+            title: Self.titleFormatter.string(from: createdAt),
+            subtitle: "Prediction \(prediction.id.prefix(8))",
+            prediction: prediction
+        )
+    }
+
+    private static let titleFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter
+    }()
+}
+
+private struct PastPredictionsStore {
+    private let defaults: UserDefaults
+    private let key = "past_predictions"
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
+
+    func loadItems() -> [PastPredictionItem] {
+        loadStoredPredictions().map(\.item)
+    }
+
+    func append(prediction: Prediction) -> [PastPredictionItem] {
+        var storedPredictions = loadStoredPredictions()
+        storedPredictions.insert(
+            StoredPastPrediction(prediction: prediction, createdAt: Date()),
+            at: 0
+        )
+        save(storedPredictions)
+        return storedPredictions.map(\.item)
+    }
+
+    private func loadStoredPredictions() -> [StoredPastPrediction] {
+        guard let data = defaults.data(forKey: key) else {
+            return []
+        }
+
+        do {
+            return try JSONDecoder().decode([StoredPastPrediction].self, from: data)
+        } catch {
+            return []
+        }
+    }
+
+    private func save(_ storedPredictions: [StoredPastPrediction]) {
+        guard let data = try? JSONEncoder().encode(storedPredictions) else {
+            return
+        }
+
+        defaults.set(data, forKey: key)
+    }
 }
